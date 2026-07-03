@@ -68,3 +68,32 @@ export async function reviewTimeOffRequest(id: string, status: "approved" | "den
   revalidatePath("/admin");
   revalidatePath("/dashboard");
 }
+
+export async function approveSwap(id: string) {
+  const supabase = await requireAdmin();
+
+  const { data: swap } = await supabase
+    .from("shift_swap_requests")
+    .select("id, shift_id, accepted_by, status")
+    .eq("id", id)
+    .single();
+
+  if (!swap || swap.status !== "accepted" || !swap.accepted_by) {
+    throw new Error("This swap isn't ready to approve");
+  }
+
+  await supabase.from("shifts").update({ employee_id: swap.accepted_by }).eq("id", swap.shift_id);
+  await supabase.from("shift_swap_requests").update({ status: "approved" }).eq("id", id);
+
+  revalidatePath("/admin");
+  revalidatePath("/dashboard");
+}
+
+export async function rejectSwap(id: string) {
+  const supabase = await requireAdmin();
+
+  await supabase.from("shift_swap_requests").update({ status: "rejected" }).eq("id", id);
+
+  revalidatePath("/admin");
+  revalidatePath("/dashboard");
+}

@@ -1,6 +1,7 @@
 import { createClient } from "@/lib/supabase/server";
 import { AvailabilityGrid } from "./availability-grid";
 import { TimeOffForm } from "./time-off-form";
+import { ShiftSwaps } from "./shift-swaps";
 import { cancelTimeOffRequest } from "./actions";
 
 function addDays(date: Date, days: number) {
@@ -11,6 +12,11 @@ function addDays(date: Date, days: number) {
 
 function toISO(d: Date) {
   return d.toISOString().slice(0, 10);
+}
+
+function daysInclusive(start: string, end: string) {
+  const ms = new Date(end).getTime() - new Date(start).getTime();
+  return Math.round(ms / (1000 * 60 * 60 * 24)) + 1;
 }
 
 const STATUS_STYLE: Record<string, string> = {
@@ -27,7 +33,7 @@ export default async function DashboardPage() {
 
   const { data: employee } = await supabase
     .from("employees")
-    .select("id")
+    .select("id, shop_id, annual_holiday_days")
     .eq("user_id", user!.id)
     .single();
 
@@ -53,13 +59,63 @@ export default async function DashboardPage() {
     .eq("employee_id", employee.id)
     .order("start_date", { ascending: false });
 
+  const daysUsed = (requests ?? [])
+    .filter((r) => r.status === "approved")
+    .reduce((sum, r) => sum + daysInclusive(r.start_date, r.end_date), 0);
+  const daysRemaining = employee.annual_holiday_days - daysUsed;
+
   const { data: shifts } = await supabase
     .from("shifts")
-    .select("date")
+    .select("id, date")
     .eq("employee_id", employee.id)
     .eq("published", true)
     .gte("date", toISO(today))
     .order("date", { ascending: true });
+
+  const { data: shopEmployees } = employee.shop_id
+    ? await supabase.from("employees").select("id, full_name").eq("shop_id", employee.shop_id)
+    : { data: [] };
+  const nameById = new Map((shopEmployees ?? []).map((e) => [e.id, e.full_name]));
+
+  type SwapRow = {
+    id: string;
+    shift_id: string;
+    requested_by: string;
+    status: "open" | "accepted" | "approved" | "rejected" | "cancelled";
+    shifts: { date: string } | { date: string }[] | null;
+  };
+
+  const { data: swapRows } = employee.shop_id
+    ? await supabase
+        .from("shift_swap_requests")
+        .select("id, shift_id, requested_by, status, shifts(date)")
+        .eq("shop_id", employee.shop_id)
+        .overrideTypes<SwapRow[], { merge: false }>()
+    : { data: [] as SwapRow[] };
+
+  const swapByShiftId = new Map((swapRows ?? []).filter((r) => r.requested_by === employee.id).map((r) => [r.shift_id, r]));
+
+  const myShifts = (shifts ?? []).map((s) => {
+    const swap = swapByShiftId.get(s.id);
+    return {
+      id: s.id,
+      date: s.date,
+      swapStatus: swap ? swap.status : null,
+      swapRequestId: swap ? swap.id : null,
+    };
+  });
+
+  const openOffers = (swapRows ?? [])
+    .filter((r) => r.status === "open" && r.requested_by !== employee.id)
+    .map((r) => {
+      const shiftDate = Array.isArray(r.shifts) ? r.shifts[0]?.date : r.shifts?.date;
+      return {
+        id: r.id,
+        date: shiftDate ?? "",
+        requesterName: nameById.get(r.requested_by) ?? "Someone",
+      };
+    })
+    .filter((o) => o.date);
 
   return (
     <div className="space-y-10">
@@ -72,26 +128,15 @@ export default async function DashboardPage() {
       </section>
 
       <section>
-        <h2 className="text-lg font-semibold mb-2">Your published shifts</h2>
-        {shifts && shifts.length > 0 ? (
-          <ul className="text-sm space-y-1">
-            {shifts.map((s) => (
-              <li key={s.date}>
-                {new Date(s.date).toLocaleDateString("en-GB", {
-                  weekday: "long",
-                  day: "numeric",
-                  month: "long",
-                })}
-              </li>
-            ))}
-          </ul>
-        ) : (
-          <p className="text-sm text-neutral-500">No published shifts yet.</p>
-        )}
+        <h2 className="text-lg font-semibold mb-2">Your shifts &amp; swaps</h2>
+        <ShiftSwaps myShifts={myShifts} openOffers={openOffers} />
       </section>
 
       <section>
         <h2 className="text-lg font-semibold mb-2">Time off / holiday requests</h2>
+        <p className="text-sm text-neutral-500 mb-3">
+          {daysRemaining} of {employee.annual_holiday_days} days remaining this year.
+        </p>
         <TimeOffForm />
         <ul className="mt-4 space-y-2 text-sm">
           {(requests ?? []).map((r) => (

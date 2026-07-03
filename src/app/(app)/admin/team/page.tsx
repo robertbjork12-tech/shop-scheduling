@@ -1,12 +1,12 @@
 import { createClient } from "@/lib/supabase/server";
-import { inviteEmployee, removeEmployee } from "./actions";
+import { inviteEmployee, removeEmployee, updateHolidayAllowance } from "./actions";
 
 export default async function TeamPage() {
   const supabase = await createClient();
   const { data: shops } = await supabase.from("shops").select("id, name").order("name");
   const { data: employees } = await supabase
     .from("employees")
-    .select("id, full_name, role, shop_id, shops(name)")
+    .select("id, full_name, role, shop_id, annual_holiday_days, shops(name)")
     .order("full_name")
     .overrideTypes<
       {
@@ -14,6 +14,7 @@ export default async function TeamPage() {
         full_name: string;
         role: "admin" | "staff";
         shop_id: string | null;
+        annual_holiday_days: number;
         shops: { name: string } | { name: string }[] | null;
       }[],
       { merge: false }
@@ -36,6 +37,22 @@ export default async function TeamPage() {
                 </span>
                 <span className="flex items-center gap-3 text-neutral-500">
                   {shopName ?? "No shop"}
+                  <form
+                    action={updateHolidayAllowance.bind(null, e.id)}
+                    className="flex items-center gap-1"
+                  >
+                    <input
+                      type="number"
+                      name="annual_holiday_days"
+                      defaultValue={e.annual_holiday_days}
+                      min={0}
+                      className="w-14 border rounded px-1 py-0.5 text-xs"
+                    />
+                    <span className="text-xs">days/yr</span>
+                    <button type="submit" className="text-xs underline">
+                      Save
+                    </button>
+                  </form>
                   <form action={removeEmployee.bind(null, e.id)}>
                     <button type="submit" className="text-red-600 underline">
                       Remove
@@ -78,6 +95,16 @@ export default async function TeamPage() {
               <option value="staff">Staff</option>
               <option value="admin">Admin</option>
             </select>
+          </div>
+          <div>
+            <label className="block text-xs text-neutral-500 mb-1">Holiday days/yr</label>
+            <input
+              type="number"
+              name="annual_holiday_days"
+              defaultValue={25}
+              min={0}
+              className="w-20 border rounded px-2 py-1 text-sm"
+            />
           </div>
           <button type="submit" className="bg-neutral-900 text-white rounded px-4 py-2 text-sm">
             Send invite

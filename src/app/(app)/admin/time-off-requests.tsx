@@ -10,6 +10,7 @@ type Req = {
   reason: string | null;
   status: string;
   employeeName: string | undefined;
+  daysRemaining: number | null;
 };
 
 export function TimeOffRequests({ requests }: { requests: Req[] }) {
@@ -31,6 +32,9 @@ export function TimeOffRequests({ requests }: { requests: Req[] }) {
               <span>
                 <strong>{r.employeeName}</strong>: {r.start_date} → {r.end_date}{" "}
                 {r.reason ? `— ${r.reason}` : ""}
+                {r.daysRemaining !== null && (
+                  <span className="text-neutral-400"> ({r.daysRemaining} days left)</span>
+                )}
               </span>
               <span className="flex gap-2">
                 <button

@@ -73,3 +73,63 @@ export async function cancelTimeOffRequest(id: string) {
   revalidatePath("/dashboard");
   revalidatePath("/admin");
 }
+
+export async function offerShiftSwap(shiftId: string) {
+  const { supabase, employeeId } = await currentEmployeeId();
+
+  const { data: shift } = await supabase
+    .from("shifts")
+    .select("id, shop_id, employee_id")
+    .eq("id", shiftId)
+    .single();
+
+  if (!shift || shift.employee_id !== employeeId) {
+    throw new Error("You can only offer your own shifts for swap");
+  }
+
+  await supabase.from("shift_swap_requests").insert({
+    shift_id: shift.id,
+    shop_id: shift.shop_id,
+    requested_by: employeeId,
+  });
+
+  revalidatePath("/dashboard");
+  revalidatePath("/admin");
+}
+
+export async function cancelSwapRequest(id: string) {
+  const { supabase, employeeId } = await currentEmployeeId();
+
+  await supabase
+    .from("shift_swap_requests")
+    .delete()
+    .eq("id", id)
+    .eq("requested_by", employeeId)
+    .eq("status", "open");
+
+  revalidatePath("/dashboard");
+  revalidatePath("/admin");
+}
+
+export async function acceptSwapRequest(id: string) {
+  const { supabase, employeeId } = await currentEmployeeId();
+
+  const { data: swap } = await supabase
+    .from("shift_swap_requests")
+    .select("id, requested_by, status")
+    .eq("id", id)
+    .single();
+
+  if (!swap || swap.status !== "open" || swap.requested_by === employeeId) {
+    throw new Error("This swap offer is no longer available");
+  }
+
+  await supabase
+    .from("shift_swap_requests")
+    .update({ accepted_by: employeeId, status: "accepted" })
+    .eq("id", id)
+    .eq("status", "open");
+
+  revalidatePath("/dashboard");
+  revalidatePath("/admin");
+}
