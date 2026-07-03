@@ -9,8 +9,15 @@ type Req = {
   end_date: string;
   reason: string | null;
   status: string;
+  requestType: "holiday" | "recuperation";
   employeeName: string | undefined;
   daysRemaining: number | null;
+  hoursRemaining: number | null;
+};
+
+const TYPE_LABEL: Record<Req["requestType"], string> = {
+  holiday: "Holiday",
+  recuperation: "Recuperation",
 };
 
 export function TimeOffRequests({ requests }: { requests: Req[] }) {
@@ -30,10 +37,16 @@ export function TimeOffRequests({ requests }: { requests: Req[] }) {
               className="flex items-center justify-between border rounded-lg px-3 py-2 text-sm"
             >
               <span>
+                <span className="text-xs px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-600 mr-2">
+                  {TYPE_LABEL[r.requestType]}
+                </span>
                 <strong>{r.employeeName}</strong>: {r.start_date} → {r.end_date}{" "}
                 {r.reason ? `— ${r.reason}` : ""}
                 {r.daysRemaining !== null && (
                   <span className="text-neutral-400"> ({r.daysRemaining} days left)</span>
+                )}
+                {r.hoursRemaining !== null && (
+                  <span className="text-neutral-400"> ({r.hoursRemaining}h balance)</span>
                 )}
               </span>
               <span className="flex gap-2">

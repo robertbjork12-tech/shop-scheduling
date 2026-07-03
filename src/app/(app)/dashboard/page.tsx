@@ -1,8 +1,10 @@
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
 import { AvailabilityGrid } from "./availability-grid";
 import { TimeOffForm } from "./time-off-form";
 import { ShiftSwaps } from "./shift-swaps";
 import { cancelTimeOffRequest } from "./actions";
+import { totalOvertimeHours, type ShiftType } from "@/lib/hours";
 
 function addDays(date: Date, days: number) {
   const d = new Date(date);
@@ -23,6 +25,11 @@ const STATUS_STYLE: Record<string, string> = {
   approved: "bg-green-100 text-green-800",
   denied: "bg-red-100 text-red-800",
   pending: "bg-yellow-100 text-yellow-800",
+};
+
+const TYPE_LABEL: Record<"holiday" | "recuperation", string> = {
+  holiday: "Holiday",
+  recuperation: "Recuperation",
 };
 
 export default async function DashboardPage() {
@@ -55,22 +62,49 @@ export default async function DashboardPage() {
 
   const { data: requests } = await supabase
     .from("time_off_requests")
-    .select("id, start_date, end_date, reason, status")
+    .select("id, start_date, end_date, reason, status, request_type")
     .eq("employee_id", employee.id)
-    .order("start_date", { ascending: false });
+    .order("start_date", { ascending: false })
+    .overrideTypes<
+      {
+        id: string;
+        start_date: string;
+        end_date: string;
+        reason: string | null;
+        status: string;
+        request_type: "holiday" | "recuperation";
+      }[],
+      { merge: false }
+    >();
 
-  const daysUsed = (requests ?? [])
-    .filter((r) => r.status === "approved")
+  const holidayDaysUsed = (requests ?? [])
+    .filter((r) => r.status === "approved" && r.request_type === "holiday")
     .reduce((sum, r) => sum + daysInclusive(r.start_date, r.end_date), 0);
-  const daysRemaining = employee.annual_holiday_days - daysUsed;
+  const holidayDaysRemaining = employee.annual_holiday_days - holidayDaysUsed;
+
+  const recuperationDaysUsed = (requests ?? [])
+    .filter((r) => r.status === "approved" && r.request_type === "recuperation")
+    .reduce((sum, r) => sum + daysInclusive(r.start_date, r.end_date), 0);
+
+  // All-time published shifts (not just the upcoming window) so the
+  // overtime/recuperation balance reflects everything worked so far.
+  const { data: allShifts } = await supabase
+    .from("shifts")
+    .select("date, shift_type")
+    .eq("employee_id", employee.id)
+    .eq("published", true)
+    .overrideTypes<{ date: string; shift_type: ShiftType }[], { merge: false }>();
+
+  const recuperationBalance = totalOvertimeHours(allShifts ?? []) - recuperationDaysUsed * 8;
 
   const { data: shifts } = await supabase
     .from("shifts")
-    .select("id, date")
+    .select("id, date, shift_type")
     .eq("employee_id", employee.id)
     .eq("published", true)
     .gte("date", toISO(today))
-    .order("date", { ascending: true });
+    .order("date", { ascending: true })
+    .overrideTypes<{ id: string; date: string; shift_type: ShiftType }[], { merge: false }>();
 
   const { data: shopEmployees } = employee.shop_id
     ? await supabase.from("employees").select("id, full_name").eq("shop_id", employee.shop_id)
@@ -82,13 +116,13 @@ export default async function DashboardPage() {
     shift_id: string;
     requested_by: string;
     status: "open" | "accepted" | "approved" | "rejected" | "cancelled";
-    shifts: { date: string } | { date: string }[] | null;
+    shifts: { date: string; shift_type: ShiftType } | { date: string; shift_type: ShiftType }[] | null;
   };
 
   const { data: swapRows } = employee.shop_id
     ? await supabase
         .from("shift_swap_requests")
-        .select("id, shift_id, requested_by, status, shifts(date)")
+        .select("id, shift_id, requested_by, status, shifts(date, shift_type)")
         .eq("shop_id", employee.shop_id)
         .overrideTypes<SwapRow[], { merge: false }>()
     : { data: [] as SwapRow[] };
@@ -100,6 +134,7 @@ export default async function DashboardPage() {
     return {
       id: s.id,
       date: s.date,
+      shiftType: s.shift_type,
       swapStatus: swap ? swap.status : null,
       swapRequestId: swap ? swap.id : null,
     };
@@ -108,10 +143,11 @@ export default async function DashboardPage() {
   const openOffers = (swapRows ?? [])
     .filter((r) => r.status === "open" && r.requested_by !== employee.id)
     .map((r) => {
-      const shiftDate = Array.isArray(r.shifts) ? r.shifts[0]?.date : r.shifts?.date;
+      const shift = Array.isArray(r.shifts) ? r.shifts[0] : r.shifts;
       return {
         id: r.id,
-        date: shiftDate ?? "",
+        date: shift?.date ?? "",
+        shiftType: shift?.shift_type ?? ("full_day" as ShiftType),
         requesterName: nameById.get(r.requested_by) ?? "Someone",
       };
     })
@@ -128,14 +164,21 @@ export default async function DashboardPage() {
       </section>
 
       <section>
-        <h2 className="text-lg font-semibold mb-2">Your shifts &amp; swaps</h2>
+        <div className="flex items-center justify-between mb-2">
+          <h2 className="text-lg font-semibold">Your shifts &amp; swaps</h2>
+          <Link href="/schedule" className="text-sm underline text-neutral-500">
+            View full shop schedule
+          </Link>
+        </div>
         <ShiftSwaps myShifts={myShifts} openOffers={openOffers} />
       </section>
 
       <section>
         <h2 className="text-lg font-semibold mb-2">Time off / holiday requests</h2>
         <p className="text-sm text-neutral-500 mb-3">
-          {daysRemaining} of {employee.annual_holiday_days} days remaining this year.
+          {holidayDaysRemaining} of {employee.annual_holiday_days} holiday days remaining this year.
+          {" · "}
+          {recuperationBalance}h recuperation balance (~{(recuperationBalance / 8).toFixed(1)} days).
         </p>
         <TimeOffForm />
         <ul className="mt-4 space-y-2 text-sm">
@@ -145,6 +188,9 @@ export default async function DashboardPage() {
               className="flex items-center justify-between border rounded-lg px-3 py-2"
             >
               <span>
+                <span className="text-xs px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-600 mr-2">
+                  {TYPE_LABEL[r.request_type]}
+                </span>
                 {r.start_date} → {r.end_date} {r.reason ? `— ${r.reason}` : ""}
               </span>
               <span className="flex items-center gap-2">

@@ -2,6 +2,7 @@
 
 import { useTransition } from "react";
 import { offerShiftSwap, cancelSwapRequest, acceptSwapRequest } from "./actions";
+import { SHIFT_LABELS, SHIFT_TIMES, type ShiftType } from "@/lib/hours";
 
 function formatDate(date: string) {
   return new Date(date).toLocaleDateString("en-GB", {
@@ -11,9 +12,14 @@ function formatDate(date: string) {
   });
 }
 
+function formatShift(date: string, shiftType: ShiftType) {
+  return `${formatDate(date)} — ${SHIFT_LABELS[shiftType]} (${SHIFT_TIMES[shiftType]})`;
+}
+
 type MyShift = {
   id: string;
   date: string;
+  shiftType: ShiftType;
   swapStatus: "open" | "accepted" | "approved" | "rejected" | "cancelled" | null;
   swapRequestId: string | null;
 };
@@ -21,6 +27,7 @@ type MyShift = {
 type OpenOffer = {
   id: string;
   date: string;
+  shiftType: ShiftType;
   requesterName: string;
 };
 
@@ -43,7 +50,7 @@ export function ShiftSwaps({
           <ul className="text-sm space-y-1">
             {myShifts.map((s) => (
               <li key={s.id} className="flex items-center justify-between border rounded-lg px-3 py-2">
-                <span>{formatDate(s.date)}</span>
+                <span>{formatShift(s.date, s.shiftType)}</span>
                 {s.swapStatus === null ? (
                   <button
                     type="button"
@@ -90,7 +97,7 @@ export function ShiftSwaps({
             {openOffers.map((o) => (
               <li key={o.id} className="flex items-center justify-between border rounded-lg px-3 py-2">
                 <span>
-                  {formatDate(o.date)} — offered by {o.requesterName}
+                  {formatShift(o.date, o.shiftType)} — offered by {o.requesterName}
                 </span>
                 <button
                   type="button"

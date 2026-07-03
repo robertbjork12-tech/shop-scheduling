@@ -48,12 +48,14 @@ export async function requestTimeOff(formData: FormData) {
   const start_date = formData.get("start_date") as string;
   const end_date = formData.get("end_date") as string;
   const reason = (formData.get("reason") as string) || null;
+  const request_type = formData.get("request_type") === "recuperation" ? "recuperation" : "holiday";
 
   await supabase.from("time_off_requests").insert({
     employee_id: employeeId,
     start_date,
     end_date,
     reason,
+    request_type,
   });
 
   revalidatePath("/dashboard");

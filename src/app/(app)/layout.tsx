@@ -58,6 +58,7 @@ export default async function AppLayout({
         </div>
         <nav className="flex gap-4 items-center text-sm">
           <Link href="/dashboard">My schedule</Link>
+          {employee.shop_id && <Link href="/schedule">Shop schedule</Link>}
           {employee.role === "admin" && <Link href="/admin">Admin</Link>}
           {employee.role === "admin" && <Link href="/admin/team">Team</Link>}
           <form action={logout}>

@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { createClient } from "@/lib/supabase/server";
+import type { ShiftType } from "@/lib/hours";
 
 async function requireAdmin() {
   const supabase = await createClient();
@@ -20,17 +21,17 @@ async function requireAdmin() {
   return supabase;
 }
 
-export async function toggleShift(
+export async function setShift(
   shopId: string,
   date: string,
   employeeId: string,
-  assigned: boolean,
+  shiftType: ShiftType | null,
 ) {
   const supabase = await requireAdmin();
 
-  if (assigned) {
+  if (shiftType) {
     await supabase.from("shifts").upsert(
-      { shop_id: shopId, date, employee_id: employeeId },
+      { shop_id: shopId, date, employee_id: employeeId, shift_type: shiftType },
       { onConflict: "shop_id,date,employee_id" },
     );
   } else {
@@ -44,6 +45,7 @@ export async function toggleShift(
 
   revalidatePath("/admin");
   revalidatePath("/dashboard");
+  revalidatePath("/schedule");
 }
 
 export async function publishShifts(shopId: string, startDate: string, endDate: string) {
@@ -58,6 +60,7 @@ export async function publishShifts(shopId: string, startDate: string, endDate: 
 
   revalidatePath("/admin");
   revalidatePath("/dashboard");
+  revalidatePath("/schedule");
 }
 
 export async function reviewTimeOffRequest(id: string, status: "approved" | "denied") {

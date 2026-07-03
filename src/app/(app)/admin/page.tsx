@@ -3,6 +3,9 @@ import { createClient } from "@/lib/supabase/server";
 import { ScheduleGrid } from "./schedule-grid";
 import { TimeOffRequests } from "./time-off-requests";
 import { SwapRequests } from "./swap-requests";
+import { HoursSummary } from "./hours-summary";
+import { totalOvertimeHours, type ShiftType } from "@/lib/hours";
+import { hoursForWeek, hoursForMonth, mondayOf, monthKeyOf } from "@/lib/hours";
 
 function addDays(date: Date, days: number) {
   const d = new Date(date);
@@ -58,10 +61,29 @@ export default async function AdminPage({
 
   const { data: shiftRows } = await supabase
     .from("shifts")
-    .select("employee_id, date, published")
+    .select("employee_id, date, published, shift_type")
     .eq("shop_id", activeShop.id)
     .gte("date", dates[0])
-    .lte("date", dates[dates.length - 1]);
+    .lte("date", dates[dates.length - 1])
+    .overrideTypes<
+      { employee_id: string; date: string; published: boolean; shift_type: ShiftType }[],
+      { merge: false }
+    >();
+
+  // All-time published shifts (not limited to the visible 4-week window) so
+  // weekly/monthly totals and the overtime balance stay accurate regardless
+  // of which weeks are currently on screen.
+  const { data: allShiftRows } = employeeIds.length
+    ? await supabase
+        .from("shifts")
+        .select("employee_id, date, shift_type")
+        .in("employee_id", employeeIds)
+        .eq("published", true)
+        .overrideTypes<{ employee_id: string; date: string; shift_type: ShiftType }[], { merge: false }>()
+    : { data: [] as { employee_id: string; date: string; shift_type: ShiftType }[] };
+
+  const thisWeek = mondayOf(toISO(today));
+  const thisMonth = monthKeyOf(toISO(today));
 
   type RequestRow = {
     id: string;
@@ -70,37 +92,57 @@ export default async function AdminPage({
     end_date: string;
     reason: string | null;
     status: string;
+    request_type: "holiday" | "recuperation";
   };
 
   const { data: requestRows } = employeeIds.length
     ? await supabase
         .from("time_off_requests")
-        .select("id, employee_id, start_date, end_date, reason, status")
+        .select("id, employee_id, start_date, end_date, reason, status, request_type")
         .in("employee_id", employeeIds)
         .order("start_date")
         .overrideTypes<RequestRow[], { merge: false }>()
     : { data: [] as RequestRow[] };
 
-  const daysUsedByEmployee = new Map<string, number>();
+  const holidayDaysUsed = new Map<string, number>();
+  const recuperationDaysUsed = new Map<string, number>();
   for (const r of requestRows ?? []) {
     if (r.status !== "approved") continue;
-    const used = daysUsedByEmployee.get(r.employee_id) ?? 0;
-    daysUsedByEmployee.set(r.employee_id, used + daysInclusive(r.start_date, r.end_date));
+    const map = r.request_type === "recuperation" ? recuperationDaysUsed : holidayDaysUsed;
+    map.set(r.employee_id, (map.get(r.employee_id) ?? 0) + daysInclusive(r.start_date, r.end_date));
   }
+
+  const hoursRows = (employees ?? []).map((e) => {
+    const employeeShifts = (allShiftRows ?? []).filter((s) => s.employee_id === e.id);
+    const overtime = totalOvertimeHours(employeeShifts);
+    const recuperationUsedHours = (recuperationDaysUsed.get(e.id) ?? 0) * 8;
+    return {
+      employeeId: e.id,
+      name: e.full_name,
+      weekHours: hoursForWeek(employeeShifts, thisWeek),
+      monthHours: hoursForMonth(employeeShifts, thisMonth),
+      recuperationBalance: overtime - recuperationUsedHours,
+    };
+  });
 
   const requests = (requestRows ?? []).map((r) => {
     const employee = (employees ?? []).find((e) => e.id === r.employee_id);
-    const daysRemaining = employee
-      ? employee.annual_holiday_days - (daysUsedByEmployee.get(r.employee_id) ?? 0)
-      : null;
+    const remaining =
+      r.request_type === "recuperation"
+        ? hoursRows.find((h) => h.employeeId === r.employee_id)?.recuperationBalance ?? null
+        : employee
+          ? employee.annual_holiday_days - (holidayDaysUsed.get(r.employee_id) ?? 0)
+          : null;
     return {
       id: r.id,
       start_date: r.start_date,
       end_date: r.end_date,
       reason: r.reason,
       status: r.status,
+      requestType: r.request_type,
       employeeName: nameById.get(r.employee_id),
-      daysRemaining,
+      daysRemaining: r.request_type === "holiday" ? remaining : null,
+      hoursRemaining: r.request_type === "recuperation" ? remaining : null,
     };
   });
 
@@ -153,6 +195,8 @@ export default async function AdminPage({
         preferences={prefRows ?? []}
         shifts={shiftRows ?? []}
       />
+
+      <HoursSummary rows={hoursRows} />
 
       <SwapRequests swaps={swaps} />
 

@@ -1,11 +1,19 @@
 "use client";
 
 import { useTransition } from "react";
-import { toggleShift, publishShifts } from "./actions";
+import { setShift, publishShifts } from "./actions";
+import { SHIFT_LABELS, type ShiftType } from "@/lib/hours";
 
 type Employee = { id: string; full_name: string };
 type Pref = { employee_id: string; date: string; preference: "want_to_work" | "prefer_off" };
-type Shift = { employee_id: string; date: string; published: boolean };
+type Shift = { employee_id: string; date: string; published: boolean; shift_type: ShiftType };
+
+const SHIFT_OPTIONS: { value: ShiftType | ""; label: string }[] = [
+  { value: "", label: "—" },
+  { value: "morning", label: SHIFT_LABELS.morning },
+  { value: "evening", label: SHIFT_LABELS.evening },
+  { value: "full_day", label: SHIFT_LABELS.full_day },
+];
 
 export function ScheduleGrid({
   shopId,
@@ -25,9 +33,10 @@ export function ScheduleGrid({
   const prefMap = new Map(preferences.map((p) => [`${p.employee_id}_${p.date}`, p.preference]));
   const shiftMap = new Map(shifts.map((s) => [`${s.employee_id}_${s.date}`, s]));
 
-  function toggle(employeeId: string, date: string, assigned: boolean) {
+  function setCell(employeeId: string, date: string, value: string) {
+    const shiftType = value === "" ? null : (value as ShiftType);
     startTransition(() => {
-      toggleShift(shopId, date, employeeId, assigned);
+      setShift(shopId, date, employeeId, shiftType);
     });
   }
 
@@ -59,14 +68,15 @@ export function ScheduleGrid({
                   </td>
                   {employees.map((e) => {
                     const pref = prefMap.get(`${e.id}_${date}`);
-                    const assigned = shiftMap.has(`${e.id}_${date}`);
+                    const shift = shiftMap.get(`${e.id}_${date}`);
+                    const assigned = Boolean(shift);
                     return (
                       <td key={e.id} className="px-3 py-2">
-                        <button
-                          type="button"
+                        <select
                           disabled={isPending}
-                          onClick={() => toggle(e.id, date, !assigned)}
-                          className={`w-full rounded px-2 py-1 text-xs border whitespace-nowrap ${
+                          value={shift?.shift_type ?? ""}
+                          onChange={(ev) => setCell(e.id, date, ev.target.value)}
+                          className={`w-full rounded px-2 py-1 text-xs border ${
                             assigned
                               ? "bg-neutral-900 text-white border-neutral-900"
                               : pref === "want_to_work"
@@ -76,14 +86,16 @@ export function ScheduleGrid({
                                   : "bg-white border-neutral-200"
                           }`}
                         >
-                          {assigned
-                            ? "Assigned"
-                            : pref === "want_to_work"
-                              ? "Wants to work"
-                              : pref === "prefer_off"
-                                ? "Prefers off"
-                                : "—"}
-                        </button>
+                          {SHIFT_OPTIONS.map((opt) => (
+                            <option key={opt.value} value={opt.value} className="text-black">
+                              {opt.value === "" && pref
+                                ? pref === "want_to_work"
+                                  ? "— (wants to work)"
+                                  : "— (prefers off)"
+                                : opt.label}
+                            </option>
+                          ))}
+                        </select>
                       </td>
                     );
                   })}

@@ -16,6 +16,13 @@ export function TimeOffForm() {
       className="flex flex-wrap items-end gap-3"
     >
       <div>
+        <label className="block text-xs text-neutral-500 mb-1">Type</label>
+        <select name="request_type" className="border rounded px-2 py-1 text-sm">
+          <option value="holiday">Holiday</option>
+          <option value="recuperation">Recuperation day</option>
+        </select>
+      </div>
+      <div>
         <label className="block text-xs text-neutral-500 mb-1">From</label>
         <input type="date" name="start_date" required className="border rounded px-2 py-1 text-sm" />
       </div>

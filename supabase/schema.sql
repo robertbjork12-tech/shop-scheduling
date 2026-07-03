@@ -18,6 +18,14 @@ do $$ begin
   create type swap_status as enum ('open', 'accepted', 'approved', 'rejected', 'cancelled');
 exception when duplicate_object then null; end $$;
 
+do $$ begin
+  create type shift_type as enum ('morning', 'evening', 'full_day');
+exception when duplicate_object then null; end $$;
+
+do $$ begin
+  create type request_type as enum ('holiday', 'recuperation');
+exception when duplicate_object then null; end $$;
+
 create table if not exists shops (
   id uuid primary key default gen_random_uuid(),
   name text not null unique,
@@ -50,6 +58,7 @@ create table if not exists time_off_requests (
   end_date date not null,
   reason text,
   status request_status not null default 'pending',
+  request_type request_type not null default 'holiday',
   created_at timestamptz not null default now(),
   constraint valid_range check (end_date >= start_date)
 );
@@ -59,6 +68,7 @@ create table if not exists shifts (
   shop_id uuid not null references shops(id) on delete cascade,
   employee_id uuid not null references employees(id) on delete cascade,
   date date not null,
+  shift_type shift_type not null default 'full_day',
   published boolean not null default false,
   created_at timestamptz not null default now(),
   unique (shop_id, date, employee_id)
@@ -153,8 +163,8 @@ create policy "employee cancels own pending requests" on time_off_requests
 create policy "admin full access to requests" on time_off_requests
   for all using (auth_is_admin()) with check (auth_is_admin());
 
-create policy "employee reads own published shifts" on shifts
-  for select using (employee_id = auth_employee_id() and published = true);
+create policy "employee reads shop published shifts" on shifts
+  for select using (shop_id = auth_shop_id() and published = true);
 
 create policy "admin full access to shifts" on shifts
   for all using (auth_is_admin()) with check (auth_is_admin());
