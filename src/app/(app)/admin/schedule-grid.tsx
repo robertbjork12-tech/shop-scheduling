@@ -1,6 +1,6 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import { setShift, publishShifts } from "./actions";
 import { SHIFT_LABELS, type ShiftType } from "@/lib/hours";
 
@@ -29,15 +29,27 @@ export function ScheduleGrid({
   shifts: Shift[];
 }) {
   const [isPending, startTransition] = useTransition();
+  const [message, setMessage] = useState<{ type: "error" | "success"; text: string } | null>(null);
 
   const prefMap = new Map(preferences.map((p) => [`${p.employee_id}_${p.date}`, p.preference]));
   const shiftMap = new Map(shifts.map((s) => [`${s.employee_id}_${s.date}`, s]));
 
+  function run(action: () => Promise<{ error?: string; success?: string }>) {
+    startTransition(async () => {
+      const result = await action();
+      if (result.error) {
+        setMessage({ type: "error", text: result.error });
+      } else if (result.success) {
+        setMessage({ type: "success", text: result.success });
+      } else {
+        setMessage(null);
+      }
+    });
+  }
+
   function setCell(employeeId: string, date: string, value: string) {
     const shiftType = value === "" ? null : (value as ShiftType);
-    startTransition(() => {
-      setShift(shopId, date, employeeId, shiftType);
-    });
+    run(() => setShift(shopId, date, employeeId, shiftType));
   }
 
   if (employees.length === 0) {
@@ -46,6 +58,17 @@ export function ScheduleGrid({
 
   return (
     <div>
+      {message && (
+        <p
+          className={`mb-3 text-sm rounded px-3 py-2 border ${
+            message.type === "error"
+              ? "text-red-700 bg-red-50 border-red-200"
+              : "text-green-700 bg-green-50 border-green-200"
+          }`}
+        >
+          {message.text}
+        </p>
+      )}
       <div className="overflow-x-auto border rounded-lg">
         <table className="min-w-full text-sm">
           <thead>
@@ -108,7 +131,7 @@ export function ScheduleGrid({
       <button
         type="button"
         disabled={isPending}
-        onClick={() => startTransition(() => publishShifts(shopId, dates[0], dates[dates.length - 1]))}
+        onClick={() => run(() => publishShifts(shopId, dates[0], dates[dates.length - 1]))}
         className="mt-4 bg-neutral-900 text-white rounded px-4 py-2 text-sm"
       >
         Publish this schedule to employees

@@ -198,7 +198,12 @@ export default async function DashboardPage() {
                   {r.status}
                 </span>
                 {r.status === "pending" && (
-                  <form action={cancelTimeOffRequest.bind(null, r.id)}>
+                  <form
+                    action={async () => {
+                      "use server";
+                      await cancelTimeOffRequest(r.id);
+                    }}
+                  >
                     <button type="submit" className="text-xs text-neutral-500 underline">
                       Cancel
                     </button>

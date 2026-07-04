@@ -1,6 +1,6 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import { reviewTimeOffRequest } from "./actions";
 
 type Req = {
@@ -22,11 +22,24 @@ const TYPE_LABEL: Record<Req["requestType"], string> = {
 
 export function TimeOffRequests({ requests }: { requests: Req[] }) {
   const [isPending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
   const pending = requests.filter((r) => r.status === "pending");
+
+  function review(id: string, status: "approved" | "denied") {
+    startTransition(async () => {
+      const result = await reviewTimeOffRequest(id, status);
+      setError(result?.error ?? null);
+    });
+  }
 
   return (
     <section>
       <h2 className="text-lg font-semibold mb-2">Time off requests</h2>
+      {error && (
+        <p className="mb-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded px-3 py-2">
+          {error}
+        </p>
+      )}
       {pending.length === 0 ? (
         <p className="text-sm text-neutral-500">No pending requests.</p>
       ) : (
@@ -52,14 +65,14 @@ export function TimeOffRequests({ requests }: { requests: Req[] }) {
               <span className="flex gap-2">
                 <button
                   disabled={isPending}
-                  onClick={() => startTransition(() => reviewTimeOffRequest(r.id, "approved"))}
+                  onClick={() => review(r.id, "approved")}
                   className="px-2 py-1 rounded bg-green-600 text-white text-xs"
                 >
                   Approve
                 </button>
                 <button
                   disabled={isPending}
-                  onClick={() => startTransition(() => reviewTimeOffRequest(r.id, "denied"))}
+                  onClick={() => review(r.id, "denied")}
                   className="px-2 py-1 rounded bg-red-600 text-white text-xs"
                 >
                   Deny

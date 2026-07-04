@@ -1,7 +1,12 @@
 import { createClient } from "@/lib/supabase/server";
 import { inviteEmployee, removeEmployee, updateHolidayAllowance } from "./actions";
 
-export default async function TeamPage() {
+export default async function TeamPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ error?: string; success?: string }>;
+}) {
+  const { error, success } = await searchParams;
   const supabase = await createClient();
   const { data: shops } = await supabase.from("shops").select("id, name").order("name");
   const { data: employees } = await supabase
@@ -22,6 +27,16 @@ export default async function TeamPage() {
 
   return (
     <div className="space-y-8">
+      {error && (
+        <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded px-3 py-2">
+          {error}
+        </p>
+      )}
+      {success && (
+        <p className="text-sm text-green-700 bg-green-50 border border-green-200 rounded px-3 py-2">
+          {success}
+        </p>
+      )}
       <section>
         <h1 className="text-xl font-semibold mb-4">Team</h1>
         <ul className="space-y-2">

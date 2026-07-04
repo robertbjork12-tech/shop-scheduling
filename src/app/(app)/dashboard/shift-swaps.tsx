@@ -1,6 +1,6 @@
 "use client";
 
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import { offerShiftSwap, cancelSwapRequest, acceptSwapRequest } from "./actions";
 import { SHIFT_LABELS, SHIFT_TIMES, type ShiftType } from "@/lib/hours";
 
@@ -39,9 +39,22 @@ export function ShiftSwaps({
   openOffers: OpenOffer[];
 }) {
   const [isPending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
+
+  function run(action: () => Promise<{ error?: string }>) {
+    startTransition(async () => {
+      const result = await action();
+      setError(result?.error ?? null);
+    });
+  }
 
   return (
     <div className="space-y-6">
+      {error && (
+        <p className="text-sm text-red-700 bg-red-50 border border-red-200 rounded px-3 py-2">
+          {error}
+        </p>
+      )}
       <div>
         <h3 className="text-sm font-medium mb-2">Your shifts</h3>
         {myShifts.length === 0 ? (
@@ -55,7 +68,7 @@ export function ShiftSwaps({
                   <button
                     type="button"
                     disabled={isPending}
-                    onClick={() => startTransition(() => offerShiftSwap(s.id))}
+                    onClick={() => run(() => offerShiftSwap(s.id))}
                     className="text-xs text-neutral-500 underline"
                   >
                     Offer swap
@@ -69,8 +82,7 @@ export function ShiftSwaps({
                       type="button"
                       disabled={isPending}
                       onClick={() =>
-                        s.swapRequestId &&
-                        startTransition(() => cancelSwapRequest(s.swapRequestId!))
+                        s.swapRequestId && run(() => cancelSwapRequest(s.swapRequestId!))
                       }
                       className="text-xs text-neutral-500 underline"
                     >
@@ -102,7 +114,7 @@ export function ShiftSwaps({
                 <button
                   type="button"
                   disabled={isPending}
-                  onClick={() => startTransition(() => acceptSwapRequest(o.id))}
+                  onClick={() => run(() => acceptSwapRequest(o.id))}
                   className="text-xs bg-neutral-900 text-white rounded px-2 py-1"
                 >
                   Take this shift

@@ -14,14 +14,21 @@ export function AvailabilityGrid({
 }) {
   const [prefs, setPrefs] = useState(initial);
   const [isPending, startTransition] = useTransition();
+  const [error, setError] = useState<string | null>(null);
 
   function cycle(date: string) {
     const current = prefs[date] ?? null;
     const next: Pref =
       current === null ? "want_to_work" : current === "want_to_work" ? "prefer_off" : null;
     setPrefs((p) => ({ ...p, [date]: next }));
-    startTransition(() => {
-      setPreference(date, next);
+    startTransition(async () => {
+      const result = await setPreference(date, next);
+      if (result.error) {
+        setPrefs((p) => ({ ...p, [date]: current }));
+        setError(result.error);
+      } else {
+        setError(null);
+      }
     });
   }
 
@@ -34,6 +41,11 @@ export function AvailabilityGrid({
 
   return (
     <div>
+      {error && (
+        <p className="mb-3 text-sm text-red-700 bg-red-50 border border-red-200 rounded px-3 py-2">
+          {error}
+        </p>
+      )}
       <div className="grid grid-cols-7 gap-2">
         {dates.map((date) => {
           const d = new Date(date);
